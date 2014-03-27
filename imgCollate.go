@@ -4,8 +4,9 @@ import (
 	"code.google.com/p/gofpdf"
 	"fmt"
 	"io/ioutil"
-	"log"
+	//~ "log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -13,23 +14,51 @@ import (
 )
 
 func main() {
-	url := "http://www.cutterandtailor.com/forum/index.php?showtopic=545"
-	folder := "/home/andrew/pics/imgcollate" // Files are saved in a subfolder of this called title's string
-	title := "MitchellSystemSleeves"
-	firstFile := 1 // After slice of files collected, all files from firstFile to the end of the slice are downloaded. '1', not '0' is the first possible file.
-	format := "A4" //"scale", "A3", "A4", "A5", "Letter", or "Legal"
-	
-	images := collectImages(url, folder, title, firstFile)
-	convertToPDF(url, folder, title, images, format)
+	http.HandleFunc("/", pdfHandler)
+	http.ListenAndServe(":8080", nil)
+}
+
+func pdfHandler(w http.ResponseWriter, r *http.Request) {
+	folder := "/home/andrew/pics/imgcollate" // Files are saved in a tmp subdir of this
+	err := r.ParseForm()
+	if err != nil {
+		fmt.Errorf("%v", err)
+	}
+	fmt.Printf("%v - %v\n", r.Form, len(r.Form))
+	if len(r.Form) == 0 {
+		fmt.Fprint(w, `<html><title></title>
+					<body><form>
+					URL: <input type="text" name="url">
+					Format: <select name="format"><option>A4</option><option>A3</option><option>A5</option><option>Letter</option><option>Legal</option><option>Scale</option></input>
+					<input type="submit">
+					</form></body>
+					</html>`)
+	} else {
+		url, format := r.Form["url"][0], r.Form["format"][0]
+		
+		subfolder, err := ioutil.TempDir(folder, "ic")
+		if err != nil {
+			panic(err)
+		}
+		defer removeFolder(subfolder)
+		images := collectImages(url, subfolder)
+		convertToPDF(url, subfolder, images, format)
+		http.ServeFile(w, r, subfolder+"/download.pdf")
+	}
+}
+
+func removeFolder(folder string) {
+	err := os.RemoveAll(folder)
+		if err != nil {
+			panic(err)
+		}
 }
 
 // Downloads all the images (currently just jpgs) from the url to a subfolder of name title in containingFolder
-func collectImages(sourceUrl, containingFolder, title string, startNum int) []imgSource {
+func collectImages(sourceUrl, folder string) []imgSource {
 	sourceHTML := getHTML(sourceUrl)
 	
-	folder := containingFolder + "/" + title
-	os.MkdirAll(folder, 0755)
-	configureLogger(folder + "/" + "dl.txt", "", 0)
+	//~ configureLogger(folder + "/" + "dl.txt", "", 0)
 	
 	var imgSources []imgSource
 	
@@ -37,26 +66,24 @@ func collectImages(sourceUrl, containingFolder, title string, startNum int) []im
 	jpg := regexp.MustCompile("src=[\"']([^\"']*(\\.jpe?g))[\"']")
 	imgURLs := jpg.FindAllStringSubmatch(sourceHTML, -1)
 	imgURLsLen := len(imgURLs)
-	dlLen := len(imgURLs[startNum-1:])
-	
-	for i := startNum; i <= dlLen; i++{
+	for i := 1; i <= imgURLsLen; i++{
 		imgURL := imgURLs[i-1][1]
 		zeroedI := leadZeros(i, imgURLsLen)
 		extension := imgURLs[i-1][2]
-		filename := title + zeroedI + extension
+		filename := zeroedI + extension
 		fileStr := folder + "/" + filename
 		
 		dlImg(imgURL, fileStr)
-		fmt.Printf("%v of %d downloading; %v of %d total\n", leadZeros(i+1-startNum, dlLen), dlLen, zeroedI, imgURLsLen)
-		log.Printf("%v\t-\t%v", fileStr, imgURL)
+		fmt.Printf("%v of %d downloading\n", zeroedI, imgURLsLen)
+		//~ log.Printf("%v\t-\t%v", fileStr, imgURL)
 		imgSources = append(imgSources, imgSource{FileStr: fileStr, URL: imgURL})
 	}
 	return imgSources
 }
 
 // Converts selection of images in a folder to a pdf and outputs that in the same folder
-func convertToPDF(pageUrl, containingFolder, filename string, imgSources []imgSource, format string) {
-	outputFolder := containingFolder + "/" + filename // In case I later want to change output
+func convertToPDF(pageUrl, outputFolder string, imgSources []imgSource, format string) {
+	//~ outputFolder := containingFolder + "/" + filename // In case I later want to change output
 	
 	pdf := gofpdf.New("P", "mm", format, "/usr/share/fonts/")
 	if format == "scale" {
@@ -64,12 +91,12 @@ func convertToPDF(pageUrl, containingFolder, filename string, imgSources []imgSo
 	}
 	
 	for i, img := range imgSources {
-		fmt.Println(img.FileStr)
+		//~ fmt.Println(img.FileStr)
 		makeImagePage(pdf, format, img, i)
 		// makes the page the same dimensions as the image
 		
 	}
-	err := pdf.OutputFileAndClose(outputFolder + "/" + filename + ".pdf")
+	err := pdf.OutputFileAndClose(outputFolder + "/download.pdf")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -163,14 +190,13 @@ func numDigits(i int) int {
 	return len(strconv.Itoa(i))
 }
 
-func configureLogger(fileStr string, prefix string, flags int) {
-	file, err := os.OpenFile(fileStr, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0755)
-		if err != nil {
-			fmt.Print (err)
-		}
-	log.SetOutput(file)
-	log.SetPrefix(prefix)
-	log.SetFlags(flags)
-}
-
+//~ func configureLogger(fileStr string, prefix string, flags int) {
+	//~ file, err := os.OpenFile(fileStr, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0755)
+		//~ if err != nil {
+			//~ fmt.Print (err)
+		//~ }
+	//~ log.SetOutput(file)
+	//~ log.SetPrefix(prefix)
+	//~ log.SetFlags(flags)
+//~ }
 
