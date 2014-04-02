@@ -6,12 +6,12 @@ import (
 	"io/ioutil"
 	//~ "log"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strconv"
-	//~ "strings"
 )
+
+var called uint64
 
 func main() {
 	http.HandleFunc("/", pdfHandler)
@@ -24,13 +24,14 @@ func pdfHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Errorf("%v", err)
 	}
-	fmt.Printf("%v - %v\n", r.Form, len(r.Form))
+	//fmt.Printf("%v - %v\n", r.Form, len(r.Form))
 	if len(r.Form) == 0 {
 		fmt.Fprint(w, `<html><title></title>
+		
 					<body><form>
 					URL: <input type="text" name="url">
 					Format: <select name="format"><option>A4</option><option>A3</option><option>A5</option><option>Letter</option><option>Legal</option><option>Scale</option></input>
-					<input type="submit">
+					<input type="submit" value="Get PDF">
 					</form></body>
 					</html>`)
 	} else {
